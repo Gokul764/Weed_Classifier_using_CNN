@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weed Detector</title>
+    <style>
+        body {
+            font-family: 'Roboto', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #d4fc79, #96e6a1);
+        }
+
+        h1 {
+            color: #2e7d32;
+        }
+
+        .container {
+            text-align: center;
+            padding: 30px;
+            border-radius: 15px;
+            background: #ffffff;
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 400px;
+        }
+
+        input[type="file"] {
+            margin: 20px 0;
+            border: 2px dashed #c8e6c9;
+            padding: 15px;
+            border-radius: 10px;
+            width: 100%;
+            text-align: center;
+            font-size: 1em;
+            cursor: pointer;
+        }
+
+        button {
+            background-color: #2e7d32;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            cursor: pointer;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: background-color 0.3s ease;
+            margin: 10px 5px;
+        }
+
+        button:hover {
+            background-color: #1b5e20;
+        }
+
+        video,
+        canvas {
+            margin-top: 20px;
+            width: 100%;
+            max-width: 320px;
+            border-radius: 10px;
+        }
+
+        .result,
+        .error {
+            margin-top: 20px;
+            font-size: 1.2em;
+            padding: 10px 15px;
+            border-radius: 8px;
+        }
+
+        .result {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+
+        footer {
+            margin-top: 30px;
+            font-size: 0.8em;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Weed Detector</h1>
+        <form id="uploadForm" enctype="multipart/form-data">
+            <input type="file" name="file" id="fileInput" accept="image/*" required>
+            <br>
+            <button type="submit">Upload & Predict</button>
+        </form>
+        <div>
+            <button id="startCamera">Open Webcam</button>
+            <button id="closeCamera" style="display:none;">Close Webcam</button>
+            <video id="video" autoplay playsinline style="display:none;"></video>
+            <canvas id="canvas" style="display:none;"></canvas>
+            <button id="capture" style="display:none;">Capture & Predict</button>
+        </div>
+        <div id="feedback"></div>
+    </div>
+
+    <script>
+        const uploadForm = document.getElementById('uploadForm');
+        const startCameraButton = document.getElementById('startCamera');
+        const closeCameraButton = document.getElementById('closeCamera');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const captureButton = document.getElementById('capture');
+        const fileInput = document.getElementById('fileInput');
+        const feedback = document.getElementById('feedback');
+
+        let stream = null;
+
+        uploadForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const formData = new FormData(uploadForm);
+
+            fetch('/predict', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                feedback.innerHTML = `<div class="result">Prediction: <strong>${data.result}</strong><br>Confidence: ${data.confidence}%</div>`;
+            })
+            .catch(error => {
+                feedback.innerHTML = `<div class="error">An error occurred: ${error.message}</div>`;
+            });
+        });
+
+
+        startCameraButton.addEventListener('click', async () => {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    video.srcObject = stream;
+                    video.style.display = 'block';
+                    canvas.style.display = 'none';
+                    captureButton.style.display = 'inline-block';
+                    closeCameraButton.style.display = 'inline-block';
+                    startCameraButton.style.display = 'none';
+                } catch (error) {
+                    feedback.innerHTML = `<div class="error">Error accessing the camera: ${error.message}</div>`;
+                }
+            } else {
+                feedback.innerHTML = `<div class="error">Webcam not supported in this browser.</div>`;
+            }
+        });
+
+
+        closeCameraButton.addEventListener('click', () => {
+            if (stream) {
+                const tracks = stream.getTracks();
+                tracks.forEach(track => track.stop());
+                stream = null;
+            }
+            video.style.display = 'none';
+            canvas.style.display = 'none';
+            captureButton.style.display = 'none';
+            closeCameraButton.style.display = 'none';
+            startCameraButton.style.display = 'inline-block';
+        });
+
+
+        captureButton.addEventListener('click', () => {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/png');
+
+            fetch('/predict', {
+                method: 'POST',
+                body: JSON.stringify({ image: imageData }),
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(response => response.json())
+            .then(data => {
+                feedback.innerHTML = `<div class="result">Prediction: <strong>${data.result}</strong><br>Confidence: ${data.confidence}%</div>`;
+            })
+            .catch(error => {
+                feedback.innerHTML = `<div class="error">An error occurred: ${error.message}</div>`;
+            });
+        });
+    </script>
+</body>
+</html>
